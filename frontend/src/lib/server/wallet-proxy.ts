@@ -2,7 +2,7 @@ import { isValidSolanaAddress } from "@/lib/solana";
 
 const WINDOW_MS = 60_000;
 const MAX_REQUESTS = 20;
-const AXUM_TIMEOUT_MS = 15_000;
+const AXUM_TIMEOUT_MS = 55_000;
 
 const hits = new Map<string, number[]>();
 
