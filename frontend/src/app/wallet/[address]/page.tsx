@@ -40,6 +40,8 @@ type LoadState<T> = {
 
 type TokenFilter = "all" | "verified" | "unverified";
 
+const TOKEN_PAGE_SIZE = 50;
+
 function severityClass(severity: RiskSeverity): string {
   switch (severity) {
     case "low":
@@ -58,6 +60,58 @@ function sortTokens(tokens: TokenHolding[]): TokenHolding[] {
     }
     return b.amount - a.amount;
   });
+}
+
+function TokenList({ tokens }: { tokens: TokenHolding[] }) {
+  const [visibleCount, setVisibleCount] = useState(TOKEN_PAGE_SIZE);
+  const shown = tokens.slice(0, visibleCount);
+  const remaining = tokens.length - shown.length;
+
+  return (
+    <>
+      <ul className="divide-y">
+        {shown.map((token, index) => (
+          <li
+            key={`${token.mint}-${index}`}
+            className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-medium">
+                {token.symbol ?? "Unknown token"}
+              </p>
+              <div className="mt-0.5 flex items-center gap-1.5">
+                <span
+                  className="font-mono text-xs text-muted-foreground"
+                  title={token.mint}
+                >
+                  {truncateAddress(token.mint)}
+                </span>
+                <CopyButton value={token.mint} label="Copy mint" iconOnly />
+              </div>
+              <p className="tabular-nums text-sm text-muted-foreground">
+                Amount {formatAmount(token.amount)}
+              </p>
+            </div>
+            <Badge variant={token.verified ? "default" : "outline"}>
+              {token.verified ? "verified" : "unverified"}
+            </Badge>
+          </li>
+        ))}
+      </ul>
+      {remaining > 0 && (
+        <div className="flex justify-center pt-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setVisibleCount((count) => count + TOKEN_PAGE_SIZE)}
+          >
+            Show {Math.min(remaining, TOKEN_PAGE_SIZE)} more ({remaining} left)
+          </Button>
+        </div>
+      )}
+    </>
+  );
 }
 
 export default function WalletPage() {
@@ -215,39 +269,10 @@ export default function WalletPage() {
             ) : visibleTokens.length === 0 ? (
               <p className="text-muted-foreground">No tokens in this filter.</p>
             ) : (
-              <ul className="divide-y">
-                {visibleTokens.map((token) => (
-                  <li
-                    key={token.mint}
-                    className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium">
-                        {token.symbol ?? "Unknown token"}
-                      </p>
-                      <div className="mt-0.5 flex items-center gap-1.5">
-                        <span
-                          className="font-mono text-xs text-muted-foreground"
-                          title={token.mint}
-                        >
-                          {truncateAddress(token.mint)}
-                        </span>
-                        <CopyButton
-                          value={token.mint}
-                          label="Copy mint"
-                          iconOnly
-                        />
-                      </div>
-                      <p className="tabular-nums text-sm text-muted-foreground">
-                        Amount {formatAmount(token.amount)}
-                      </p>
-                    </div>
-                    <Badge variant={token.verified ? "default" : "outline"}>
-                      {token.verified ? "verified" : "unverified"}
-                    </Badge>
-                  </li>
-                ))}
-              </ul>
+              <TokenList
+                key={`${address}-${retryKey}-${tokenFilter}`}
+                tokens={visibleTokens}
+              />
             )}
           </CardContent>
         </Card>
