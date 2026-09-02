@@ -30,6 +30,7 @@ pub struct NftHolding {
     pub image: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub collection: Option<String>,
+    pub verified: bool,
 }
 
 #[derive(Serialize, ToSchema)]

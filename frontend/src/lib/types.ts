@@ -20,6 +20,7 @@ export interface NftHolding {
   name: string;
   image?: string;
   collection?: string;
+  verified: boolean;
 }
 
 export interface NftsResponse {

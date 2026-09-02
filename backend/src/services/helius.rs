@@ -199,6 +199,7 @@ pub struct RawNftAsset {
     pub name: String,
     pub image: Option<String>,
     pub collection: Option<String>,
+    pub verified: bool,
 }
 
 #[derive(Deserialize)]
@@ -221,6 +222,22 @@ struct AssetItem {
     content: Option<AssetContent>,
     #[serde(default)]
     grouping: Vec<AssetGrouping>,
+    #[serde(default)]
+    compression: AssetCompression,
+    #[serde(default)]
+    royalty: AssetRoyalty,
+}
+
+#[derive(Deserialize, Default)]
+struct AssetCompression {
+    #[serde(default)]
+    compressed: bool,
+}
+
+#[derive(Deserialize, Default)]
+struct AssetRoyalty {
+    #[serde(default)]
+    primary_sale_happened: bool,
 }
 
 #[derive(Deserialize, Default)]
@@ -334,6 +351,14 @@ async fn fetch_assets_page(
     Ok(rpc.result.map(|r| r.items).unwrap_or_default())
 }
 
+/// Compressed NFTs cost a fraction of a cent to mint, which is exactly why mass
+/// airdrop spam almost always takes this form. One that has never actually been
+/// sold on a marketplace is very likely an unsolicited drop rather than
+/// something the holder chose to acquire.
+fn is_verified_nft(compressed: bool, primary_sale_happened: bool) -> bool {
+    !compressed || primary_sale_happened
+}
+
 fn parse_nft_items(items: Vec<AssetItem>) -> Vec<RawNftAsset> {
     items
         .into_iter()
@@ -350,15 +375,41 @@ fn parse_nft_items(items: Vec<AssetItem>) -> Vec<RawNftAsset> {
                 .into_iter()
                 .find(|g| g.group_key == "collection")
                 .map(|g| g.group_value);
+            let verified = is_verified_nft(
+                item.compression.compressed,
+                item.royalty.primary_sale_happened,
+            );
 
             RawNftAsset {
                 mint: item.id,
                 name,
                 image: content.links.image,
                 collection,
+                verified,
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod nft_tests {
+    use super::is_verified_nft;
+
+    #[test]
+    fn compressed_and_never_sold_is_unverified() {
+        assert!(!is_verified_nft(true, false));
+    }
+
+    #[test]
+    fn compressed_but_sold_is_verified() {
+        assert!(is_verified_nft(true, true));
+    }
+
+    #[test]
+    fn uncompressed_is_always_verified() {
+        assert!(is_verified_nft(false, false));
+        assert!(is_verified_nft(false, true));
+    }
 }
 
 const ENHANCED_TX_LIMIT: u32 = 50;

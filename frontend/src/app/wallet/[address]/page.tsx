@@ -271,6 +271,15 @@ function TokenList({ tokens }: { tokens: TokenHolding[] }) {
   );
 }
 
+function sortNfts(nfts: NftHolding[]): NftHolding[] {
+  return [...nfts].sort((a, b) => {
+    if (a.verified !== b.verified) {
+      return a.verified ? -1 : 1;
+    }
+    return a.name.localeCompare(b.name);
+  });
+}
+
 function NftThumbnail({ nft }: { nft: NftHolding }) {
   const [failed, setFailed] = useState(false);
   const showImage = Boolean(nft.image) && !failed;
@@ -297,7 +306,13 @@ function NftThumbnail({ nft }: { nft: NftHolding }) {
         <p className="truncate text-xs font-medium" title={nft.name}>
           {nft.name}
         </p>
-        <div className="flex items-center gap-1">
+        <Badge
+          variant={nft.verified ? "default" : "outline"}
+          className="mt-1 h-4 px-1.5 text-[10px]"
+        >
+          {nft.verified ? "verified" : "unverified"}
+        </Badge>
+        <div className="mt-1 flex items-center gap-1">
           <span
             className="truncate font-mono text-[11px] text-muted-foreground"
             title={nft.mint}
@@ -446,6 +461,7 @@ export default function WalletPage() {
   });
   const [retryKey, setRetryKey] = useState(0);
   const [tokenFilter, setTokenFilter] = useState<TokenFilter>("all");
+  const [nftFilter, setNftFilter] = useState<TokenFilter>("all");
 
   const loadSection = useCallback(
     async function loadSection<T>(
@@ -488,6 +504,21 @@ export default function WalletPage() {
     }
     return sorted;
   }, [holdings, tokenFilter]);
+
+  const nftHoldings = nfts.data?.nfts ?? [];
+  const verifiedNftCount = nftHoldings.filter((nft) => nft.verified).length;
+  const unverifiedNftCount = nftHoldings.length - verifiedNftCount;
+
+  const visibleNfts = useMemo(() => {
+    const sorted = sortNfts(nftHoldings);
+    if (nftFilter === "verified") {
+      return sorted.filter((nft) => nft.verified);
+    }
+    if (nftFilter === "unverified") {
+      return sorted.filter((nft) => !nft.verified);
+    }
+    return sorted;
+  }, [nftHoldings, nftFilter]);
 
   const band = risks.data ? riskBand(risks.data.risk_score) : null;
 
@@ -704,13 +735,33 @@ export default function WalletPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-1.5">
               NFTs
-              {nfts.data && <TabCount count={nfts.data.nfts.length} />}
+              {nfts.data && <TabCount count={nftHoldings.length} />}
             </CardTitle>
-            {nfts.data && nfts.data.nfts.length > 0 && (
+            {nfts.data && nftHoldings.length > 0 && (
               <CardDescription>
-                {nfts.data.nfts.length} holding
-                {nfts.data.nfts.length === 1 ? "" : "s"}
+                {verifiedNftCount} verified · {unverifiedNftCount} unverified
               </CardDescription>
+            )}
+            {nftHoldings.length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-2">
+                {(
+                  [
+                    ["all", `All (${nftHoldings.length})`],
+                    ["verified", `Verified (${verifiedNftCount})`],
+                    ["unverified", `Unverified (${unverifiedNftCount})`],
+                  ] as const
+                ).map(([value, label]) => (
+                  <Button
+                    key={value}
+                    type="button"
+                    size="sm"
+                    variant={nftFilter === value ? "default" : "outline"}
+                    onClick={() => setNftFilter(value)}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
             )}
           </CardHeader>
           <CardContent className="max-h-[30rem] overflow-y-auto">
@@ -730,11 +781,17 @@ export default function WalletPage() {
                 onRetry={() => void loadSection(getWalletNfts, setNfts)}
               />
             )}
-            {nfts.data && nfts.data.nfts.length === 0 && (
+            {nfts.data && nftHoldings.length === 0 && (
               <p className="text-muted-foreground">No NFTs found.</p>
             )}
-            {nfts.data && nfts.data.nfts.length > 0 && (
-              <NftGrid key={`${address}-${retryKey}`} nfts={nfts.data.nfts} />
+            {nfts.data && nftHoldings.length > 0 && visibleNfts.length === 0 && (
+              <p className="text-muted-foreground">No NFTs in this filter.</p>
+            )}
+            {nfts.data && visibleNfts.length > 0 && (
+              <NftGrid
+                key={`${address}-${retryKey}-${nftFilter}`}
+                nfts={visibleNfts}
+              />
             )}
           </CardContent>
         </Card>

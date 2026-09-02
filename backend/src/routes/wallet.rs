@@ -208,6 +208,7 @@ async fn fetch_nft_holdings(state: &AppState, address: &str) -> Result<Vec<NftHo
             name: asset.name,
             image: asset.image,
             collection: asset.collection,
+            verified: asset.verified,
         })
         .collect();
 
