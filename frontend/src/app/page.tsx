@@ -2,17 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
-import { ArrowRight, ShieldCheck } from "lucide-react";
+import { ArrowRight, Check, ShieldCheck, X } from "lucide-react";
 
 import { RiskGauge } from "@/components/risk-gauge";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardFooter,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { riskBand } from "@/lib/format";
@@ -110,66 +109,74 @@ const SAMPLE_FINDINGS: {
   },
 ];
 
-const SCENARIOS: { label: string; score: number; lines: string[] }[] = [
-  {
-    label: "Clean wallet",
-    score: 0,
-    lines: [
-      "SOL, USDC and JUP all resolve cleanly",
-      "All mints verified · no lookalike senders",
-      "Zero unsolicited transfers in the scanned window",
-    ],
-  },
-  {
-    label: "Poisoned wallet",
-    score: 88,
-    lines: [
-      "0.000001 SOL from 9fRkQ2wv…8sLm2Vx, mimicking your counterparty 9fRkPt3d…yEnm2Vx",
-      "Address poisoning caught, with the address it mimics",
-      "Dust from a lookalike address blends right in — for everyone else",
-    ],
-  },
-  {
-    label: "NFT-spam wallet",
-    score: 62,
-    lines: [
-      "23 unverified NFTs · 11 unverified mints",
-      "6 mints share a creator that batch-airdropped thousands of wallets",
-      "Compressed and never traded, so flagged unverified",
-    ],
-  },
-];
-
-const HOW_IT_WORKS: { step: string; title: string; description: string }[] = [
+const GET_THREE_THINGS: { step: string; title: string; description: string }[] = [
   {
     step: "01",
-    title: "Paste an address",
-    description:
-      "Paste a Solana wallet address. No wallet connection, nothing to sign.",
-  },
-  {
-    step: "02",
     title: "What's in it",
     description:
       "SOL balance, every SPL and Token-2022 holding, every NFT, and the inbound transfers. Read-only, straight from Helius.",
   },
   {
-    step: "03",
+    step: "02",
     title: "What's verified",
     description:
       "Tokens checked against the Jupiter list. NFTs checked on compression and sale history, since there's no trusted list for collections.",
   },
   {
-    step: "04",
+    step: "03",
     title: "A score, and why",
     description: "0 to 100, and the specific reasons behind it. Not just a number.",
   },
 ];
 
+const COMPARISON: { generic: string; sentinel: string }[] = [
+  {
+    generic: "Fifty token accounts listed, unranked",
+    sentinel: "One score from 0 to 100, and the reasons behind it",
+  },
+  {
+    generic: "No way to tell which holdings are real",
+    sentinel: "Every mint checked against the Jupiter token list",
+  },
+  {
+    generic: "Dust from a lookalike address blends right in",
+    sentinel: "Address poisoning caught, with the address it mimics",
+  },
+  {
+    generic: "Airdropped NFTs look like the ones you bought",
+    sentinel: "Compressed and never traded, so flagged unverified",
+  },
+  {
+    generic: "Built for forensics, if you know what to look for",
+    sentinel: "Built for one question: can I trust this wallet?",
+  },
+];
+
+const TECH_CHECKS = [
+  "20 backend tests, clippy-clean",
+  "Retries a slow upstream before showing an error",
+];
+
+const API_SAMPLE = `GET /wallet/{address}/risks
+
+{
+  "address": "4Nd8...7hQp",
+  "risk_score": 88,
+  "flags": [
+    { "flag_type": "address_poisoning", "severity": "high", "message": "…" },
+    { "flag_type": "unverified_flood", "severity": "high", "message": "…" },
+    { "flag_type": "spam_token", "severity": "medium", "message": "…" },
+    { "flag_type": "dust_tokens", "severity": "low", "message": "…" }
+  ]
+}`;
+
 function SampleReportCard() {
   const band = riskBand(88);
   return (
-    <Card className="w-full max-w-md text-left shadow-2xl shadow-black/40">
+    <Card
+      id="sample-report"
+      className="w-full max-w-md scroll-mt-24 text-left shadow-2xl shadow-black/40"
+    >
       <CardHeader className="flex items-center justify-between gap-2 border-b border-border">
         <div className="flex items-center gap-2">
           <span className="font-mono text-sm">4Nd8...7hQp</span>
@@ -224,36 +231,6 @@ function SampleReportCard() {
   );
 }
 
-function ScenarioCard({
-  label,
-  score,
-  lines,
-}: {
-  label: string;
-  score: number;
-  lines: string[];
-}) {
-  const band = riskBand(score);
-  return (
-    <Card className="text-left">
-      <CardHeader className="flex items-center justify-between gap-2">
-        <CardTitle>{label}</CardTitle>
-        <Badge className={band.badgeClass}>{score}/100</Badge>
-      </CardHeader>
-      <CardContent>
-        <ul className="flex flex-col gap-2.5 text-sm text-muted-foreground">
-          {lines.map((line) => (
-            <li key={line} className="flex items-start gap-2">
-              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-muted-foreground/50" />
-              <span>{line}</span>
-            </li>
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
-  );
-}
-
 export default function HomePage() {
   const router = useRouter();
   const [address, setAddress] = useState("");
@@ -301,8 +278,9 @@ export default function HomePage() {
             </p>
 
             <form
+              id="scan"
               onSubmit={onSubmit}
-              className="flex w-full max-w-xl flex-col gap-2 pt-2"
+              className="flex w-full max-w-xl scroll-mt-24 flex-col gap-2 pt-2"
             >
               <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card/80 p-2 shadow-lg shadow-black/20 backdrop-blur sm:flex-row">
                 <Input
@@ -340,7 +318,10 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="flex flex-col gap-8 border-t border-border pt-16">
+        <section
+          id="coverage"
+          className="flex scroll-mt-24 flex-col gap-8 border-t border-border pt-16"
+        >
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex flex-col gap-2">
               <span className="text-xs font-semibold tracking-wide text-primary uppercase">
@@ -380,49 +361,128 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="flex flex-col gap-8 border-t border-border pt-16">
-          <div className="mx-auto flex max-w-2xl flex-col gap-2 text-center">
-            <span className="text-xs font-semibold tracking-wide text-primary uppercase">
-              Vs. explorers
-            </span>
-            <p className="text-sm text-muted-foreground">
-              Explorers are built for forensics, if you know what to look for.
-            </p>
+        <section
+          id="how-it-works"
+          className="scroll-mt-24 border-t border-border pt-16"
+        >
+          <div className="rounded-2xl border border-border bg-card/30 p-6 sm:p-8">
             <h2 className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
-              Wallet Sentinel is built for one question:{" "}
-              <span className="text-primary">can I trust this wallet?</span>
+              Paste an address, get three things back
             </h2>
+            <div className="mt-8 grid gap-6 sm:grid-cols-3">
+              {GET_THREE_THINGS.map((item) => (
+                <div
+                  key={item.step}
+                  className="flex flex-col gap-2 border-t border-border pt-4 text-left"
+                >
+                  <span className="font-mono text-xs text-primary">
+                    {item.step}
+                  </span>
+                  <p className="text-sm font-medium">{item.title}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {item.description}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="vs-explorers"
+          className="flex scroll-mt-24 flex-col gap-8 border-t border-border pt-16"
+        >
+          <div className="mx-auto flex max-w-2xl flex-col gap-2 text-center">
+            <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+              Not another explorer
+            </h2>
+            <p className="text-balance text-muted-foreground">
+              A wall of raw data, and zero help figuring out what mattered.
+              That&apos;s the part I wanted to fix.
+            </p>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-3">
-            {SCENARIOS.map((scenario) => (
-              <ScenarioCard key={scenario.label} {...scenario} />
+          <div className="w-full overflow-hidden rounded-2xl border border-border bg-card/50 text-left">
+            <div className="grid grid-cols-2 border-b border-border text-xs font-medium sm:text-sm">
+              <div className="px-4 py-3 text-muted-foreground uppercase sm:px-6">
+                Typical explorer
+              </div>
+              <div className="border-l border-border px-4 py-3 text-primary uppercase sm:px-6">
+                Wallet Sentinel
+              </div>
+            </div>
+            {COMPARISON.map((row) => (
+              <div
+                key={row.sentinel}
+                className="grid grid-cols-2 border-b border-border last:border-0"
+              >
+                <div className="flex items-start gap-2 px-4 py-3.5 text-xs text-muted-foreground sm:px-6 sm:text-sm">
+                  <X className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/50" />
+                  <span>{row.generic}</span>
+                </div>
+                <div className="flex items-start gap-2 border-l border-border px-4 py-3.5 text-xs sm:px-6 sm:text-sm">
+                  <Check className="mt-0.5 size-3.5 shrink-0 text-primary" />
+                  <span>{row.sentinel}</span>
+                </div>
+              </div>
             ))}
           </div>
         </section>
 
-        <section className="flex flex-col gap-8 border-t border-border pt-16">
-          <div className="mx-auto flex max-w-xl flex-col gap-2 text-center">
-            <span className="text-xs font-semibold tracking-wide text-primary uppercase">
-              How it works
-            </span>
-            <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-              Paste, scan, done
-            </h2>
+        <section
+          id="under-the-hood"
+          className="scroll-mt-24 border-t border-border pt-16"
+        >
+          <div className="grid gap-8 rounded-2xl border border-border bg-card/30 p-6 sm:p-8 lg:grid-cols-2">
+            <div className="flex flex-col gap-4 text-left">
+              <span className="text-xs font-semibold tracking-wide text-primary uppercase">
+                Under the hood
+              </span>
+              <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                One endpoint, same verdict
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Rust and Axum on the backend, talking to Helius for on-chain
+                data and Jupiter for the token list, with its own rate
+                limiting, API-key auth and caching. Next.js on the front,
+                proxying every request server-side so the key never touches
+                the browser.
+              </p>
+              <ul className="flex flex-col gap-2 text-sm">
+                {TECH_CHECKS.map((check) => (
+                  <li key={check} className="flex items-center gap-2">
+                    <Check className="size-3.5 shrink-0 text-emerald-400" />
+                    <span>{check}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <pre className="overflow-x-auto rounded-xl border border-border bg-background/60 p-4 font-mono text-xs text-muted-foreground">
+              {API_SAMPLE}
+            </pre>
           </div>
+        </section>
 
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {HOW_IT_WORKS.map((item) => (
-              <div key={item.step} className="flex flex-col gap-2 text-left">
-                <span className="font-mono text-xs text-primary">
-                  {item.step}
-                </span>
-                <p className="text-sm font-medium">{item.title}</p>
-                <p className="text-sm text-muted-foreground">
-                  {item.description}
-                </p>
-              </div>
-            ))}
+        <section className="flex flex-col items-center gap-6 border-t border-border pt-16 text-center">
+          <h2 className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+            No wallet connection.
+            <br />
+            No signing.
+          </h2>
+          <p className="max-w-md text-balance text-muted-foreground">
+            Nothing it could break even if it tried. It just looks at a
+            wallet and tells you what&apos;s in it.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <a href="#scan" className={buttonVariants({ size: "lg" })}>
+              Scan a wallet
+            </a>
+            <a
+              href="#sample-report"
+              className={buttonVariants({ size: "lg", variant: "outline" })}
+            >
+              See a sample report
+            </a>
           </div>
         </section>
       </div>
