@@ -47,7 +47,7 @@ export function WalletToolbar({
 
   return (
     <div className="sticky top-0 z-10 border-b border-border bg-background/85 backdrop-blur">
-      <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center gap-3 px-6 py-3">
+      <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-3 px-6 py-3">
         <div className="flex min-w-0 items-center gap-1.5">
           <span className="truncate font-mono text-sm" title={address}>
             {truncateAddress(address, 6, 6)}

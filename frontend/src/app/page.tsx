@@ -2,7 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
-import { ArrowRight, Coins, ShieldAlert, ShieldCheck, Wallet } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  Coins,
+  Fingerprint,
+  ShieldAlert,
+  ShieldCheck,
+  Wallet,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +22,7 @@ const FEATURES = [
     icon: Wallet,
     title: "Balances & holdings",
     description:
-      "SOL balance plus every SPL and Token-2022 holding, in one lookup.",
+      "SOL balance plus every SPL, Token-2022, and NFT holding, in one lookup.",
   },
   {
     icon: Coins,
@@ -26,6 +35,31 @@ const FEATURES = [
     title: "Heuristic risk flags",
     description:
       "A scored signal for suspicious mint activity, so you know what to double-check.",
+  },
+  {
+    icon: Fingerprint,
+    title: "Address poisoning detection",
+    description:
+      "Catches dust sent from lookalike addresses designed to trick your next copy-paste.",
+  },
+];
+
+const COMPARISON = [
+  {
+    generic: "Every token account listed, unranked",
+    sentinel: "One score, Low to Critical, and why it landed there",
+  },
+  {
+    generic: "“Verified” badges are inconsistent or missing",
+    sentinel: "Every token checked against Jupiter's strict list",
+  },
+  {
+    generic: "Dust from a lookalike address blends right in",
+    sentinel: "Address poisoning attempts called out by name",
+  },
+  {
+    generic: "Built for transaction forensics",
+    sentinel: "Built to answer one question: can I trust this wallet?",
   },
 ];
 
@@ -68,8 +102,8 @@ export default function HomePage() {
             <span className="text-primary">Solana wallet</span>
           </h1>
           <p className="text-balance text-base text-muted-foreground sm:text-lg">
-            Paste any address to inspect its SOL balance, SPL &amp; Token-2022
-            holdings, and heuristic risk flags — before you trust it.
+            Paste any address to inspect its SOL balance, SPL, Token-2022 &amp;
+            NFT holdings, and heuristic risk flags — before you trust it.
           </p>
         </div>
 
@@ -98,7 +132,7 @@ export default function HomePage() {
           )}
         </form>
 
-        <div className="grid w-full gap-4 sm:grid-cols-3">
+        <div className="grid w-full gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {FEATURES.map(({ icon: Icon, title, description }) => (
             <div
               key={title}
@@ -111,6 +145,44 @@ export default function HomePage() {
               <p className="text-sm text-muted-foreground">{description}</p>
             </div>
           ))}
+        </div>
+
+        <div className="flex w-full flex-col items-center gap-6 border-t border-border pt-14">
+          <div className="flex flex-col gap-2">
+            <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+              Not another explorer
+            </h2>
+            <p className="text-balance text-muted-foreground">
+              Explorers show you data. Wallet Sentinel tells you what it
+              means.
+            </p>
+          </div>
+
+          <div className="w-full overflow-hidden rounded-2xl border border-border bg-card/50 text-left">
+            <div className="grid grid-cols-2 border-b border-border text-xs font-medium sm:text-sm">
+              <div className="px-4 py-3 text-muted-foreground sm:px-6">
+                Typical explorer
+              </div>
+              <div className="border-l border-border px-4 py-3 text-primary sm:px-6">
+                Wallet Sentinel
+              </div>
+            </div>
+            {COMPARISON.map((row) => (
+              <div
+                key={row.sentinel}
+                className="grid grid-cols-2 border-b border-border last:border-0"
+              >
+                <div className="flex items-start gap-2 px-4 py-3.5 text-xs text-muted-foreground sm:px-6 sm:text-sm">
+                  <X className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/50" />
+                  <span>{row.generic}</span>
+                </div>
+                <div className="flex items-start gap-2 border-l border-border px-4 py-3.5 text-xs sm:px-6 sm:text-sm">
+                  <Check className="mt-0.5 size-3.5 shrink-0 text-primary" />
+                  <span>{row.sentinel}</span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </main>

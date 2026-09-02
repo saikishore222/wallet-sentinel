@@ -172,6 +172,41 @@ function ErrorCard({
   );
 }
 
+function InlineError({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-start gap-2">
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <AlertTriangle className="size-4 shrink-0 text-destructive" />
+        {humanizeError(message)}
+      </p>
+      <Button type="button" size="sm" variant="outline" onClick={onRetry}>
+        Try again
+      </Button>
+    </div>
+  );
+}
+
+function TabCount({ count, alert }: { count: number; alert?: boolean }) {
+  if (count === 0) {
+    return null;
+  }
+  return (
+    <Badge
+      className={
+        alert ? "bg-red-400/15 text-red-400" : "bg-muted text-muted-foreground"
+      }
+    >
+      {count}
+    </Badge>
+  );
+}
+
 function sortTokens(tokens: TokenHolding[]): TokenHolding[] {
   return [...tokens].sort((a, b) => {
     if (a.verified !== b.verified) {
@@ -283,7 +318,7 @@ function NftGrid({ nfts }: { nfts: NftHolding[] }) {
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3">
         {shown.map((nft, index) => (
           <NftThumbnail key={`${nft.mint}-${index}`} nft={nft} />
         ))}
@@ -464,7 +499,7 @@ export default function WalletPage() {
         riskLoading={risks.loading}
         onRefresh={() => setRetryKey((n) => n + 1)}
       />
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 p-6">
+      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 p-6">
       <div className="grid gap-4 sm:grid-cols-2">
         {summary.loading && (
           <Card>
@@ -546,61 +581,68 @@ export default function WalletPage() {
         )}
       </div>
 
-      {risks.data && risks.data.flags.length > 0 && (
+      <div className="grid gap-4 lg:grid-cols-3">
         <Card className={ANIMATE_IN}>
           <CardHeader>
-            <CardTitle>Risk flags</CardTitle>
-            <CardDescription>
-              {risks.data.flags.length} flag
-              {risks.data.flags.length === 1 ? "" : "s"} worth a closer look
-            </CardDescription>
-            <FlagSeverityOverview flags={risks.data.flags} />
+            <CardTitle className="flex items-center gap-1.5">
+              Risk flags
+              {risks.data && (
+                <TabCount
+                  count={risks.data.flags.length}
+                  alert={risks.data.flags.some((f) => f.severity === "high")}
+                />
+              )}
+            </CardTitle>
+            {risks.data && risks.data.flags.length > 0 && (
+              <CardDescription>
+                {risks.data.flags.length} flag
+                {risks.data.flags.length === 1 ? "" : "s"} worth a closer
+                look
+              </CardDescription>
+            )}
           </CardHeader>
-          <CardContent>
-            <FlagList
-              key={`${address}-${retryKey}`}
-              flags={risks.data.flags}
-            />
-          </CardContent>
-        </Card>
-      )}
-
-      {tokens.loading && (
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-3.5 w-48" />
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="flex items-center gap-3">
-                <Skeleton className="size-8 shrink-0 rounded-full" />
-                <div className="flex flex-1 flex-col gap-1.5">
-                  <Skeleton className="h-3.5 w-24" />
-                  <Skeleton className="h-3 w-32" />
-                </div>
+          <CardContent className="flex max-h-[30rem] flex-col gap-4 overflow-y-auto">
+            {risks.loading && (
+              <div className="flex flex-col gap-3">
+                {Array.from({ length: 3 }).map((_, index) => (
+                  <Skeleton key={index} className="h-14 w-full rounded-md" />
+                ))}
               </div>
-            ))}
+            )}
+            {risks.error && (
+              <InlineError
+                message={risks.error}
+                onRetry={() => void loadSection(getWalletRisks, setRisks)}
+              />
+            )}
+            {risks.data && risks.data.flags.length === 0 && (
+              <p className="text-muted-foreground">
+                No suspicious signals found.
+              </p>
+            )}
+            {risks.data && risks.data.flags.length > 0 && (
+              <>
+                <FlagSeverityOverview flags={risks.data.flags} />
+                <FlagList
+                  key={`${address}-${retryKey}`}
+                  flags={risks.data.flags}
+                />
+              </>
+            )}
           </CardContent>
         </Card>
-      )}
-      {tokens.error && (
-        <ErrorCard
-          title="Tokens"
-          message={tokens.error}
-          onRetry={() => void loadSection(getWalletTokens, setTokens)}
-        />
-      )}
-      {tokens.data && (
+
         <Card className={ANIMATE_IN}>
           <CardHeader>
-            <CardTitle>Tokens</CardTitle>
-            <CardDescription>
-              {holdings.length} holding{holdings.length === 1 ? "" : "s"}
-              {holdings.length > 0
-                ? ` · ${verifiedCount} verified · ${unverifiedCount} unverified`
-                : ""}
-            </CardDescription>
+            <CardTitle className="flex items-center gap-1.5">
+              Tokens
+              {tokens.data && <TabCount count={holdings.length} />}
+            </CardTitle>
+            {tokens.data && holdings.length > 0 && (
+              <CardDescription>
+                {verifiedCount} verified · {unverifiedCount} unverified
+              </CardDescription>
+            )}
             {holdings.length > 0 && (
               <div className="flex flex-wrap gap-2 pt-2">
                 {(
@@ -623,12 +665,33 @@ export default function WalletPage() {
               </div>
             )}
           </CardHeader>
-          <CardContent>
-            {holdings.length === 0 ? (
+          <CardContent className="max-h-[30rem] overflow-y-auto">
+            {tokens.loading && (
+              <div className="flex flex-col gap-3">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div key={index} className="flex items-center gap-3">
+                    <Skeleton className="size-8 shrink-0 rounded-full" />
+                    <div className="flex flex-1 flex-col gap-1.5">
+                      <Skeleton className="h-3.5 w-24" />
+                      <Skeleton className="h-3 w-32" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {tokens.error && (
+              <InlineError
+                message={tokens.error}
+                onRetry={() => void loadSection(getWalletTokens, setTokens)}
+              />
+            )}
+            {tokens.data && holdings.length === 0 && (
               <p className="text-muted-foreground">No tokens found.</p>
-            ) : visibleTokens.length === 0 ? (
+            )}
+            {tokens.data && holdings.length > 0 && visibleTokens.length === 0 && (
               <p className="text-muted-foreground">No tokens in this filter.</p>
-            ) : (
+            )}
+            {tokens.data && visibleTokens.length > 0 && (
               <TokenList
                 key={`${address}-${retryKey}-${tokenFilter}`}
                 tokens={visibleTokens}
@@ -636,44 +699,46 @@ export default function WalletPage() {
             )}
           </CardContent>
         </Card>
-      )}
 
-      {nfts.loading && (
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-3.5 w-32" />
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {Array.from({ length: 3 }).map((_, index) => (
-                <Skeleton key={index} className="aspect-square w-full rounded-lg" />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-      {nfts.error && (
-        <ErrorCard
-          title="NFTs"
-          message={nfts.error}
-          onRetry={() => void loadSection(getWalletNfts, setNfts)}
-        />
-      )}
-      {nfts.data && nfts.data.nfts.length > 0 && (
         <Card className={ANIMATE_IN}>
           <CardHeader>
-            <CardTitle>NFTs</CardTitle>
-            <CardDescription>
-              {nfts.data.nfts.length} holding
-              {nfts.data.nfts.length === 1 ? "" : "s"}
-            </CardDescription>
+            <CardTitle className="flex items-center gap-1.5">
+              NFTs
+              {nfts.data && <TabCount count={nfts.data.nfts.length} />}
+            </CardTitle>
+            {nfts.data && nfts.data.nfts.length > 0 && (
+              <CardDescription>
+                {nfts.data.nfts.length} holding
+                {nfts.data.nfts.length === 1 ? "" : "s"}
+              </CardDescription>
+            )}
           </CardHeader>
-          <CardContent>
-            <NftGrid key={`${address}-${retryKey}`} nfts={nfts.data.nfts} />
+          <CardContent className="max-h-[30rem] overflow-y-auto">
+            {nfts.loading && (
+              <div className="grid grid-cols-2 gap-3">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <Skeleton
+                    key={index}
+                    className="aspect-square w-full rounded-lg"
+                  />
+                ))}
+              </div>
+            )}
+            {nfts.error && (
+              <InlineError
+                message={nfts.error}
+                onRetry={() => void loadSection(getWalletNfts, setNfts)}
+              />
+            )}
+            {nfts.data && nfts.data.nfts.length === 0 && (
+              <p className="text-muted-foreground">No NFTs found.</p>
+            )}
+            {nfts.data && nfts.data.nfts.length > 0 && (
+              <NftGrid key={`${address}-${retryKey}`} nfts={nfts.data.nfts} />
+            )}
           </CardContent>
         </Card>
-      )}
+      </div>
       </main>
     </>
   );
