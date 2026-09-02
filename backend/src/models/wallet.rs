@@ -21,3 +21,19 @@ pub struct TokensResponse {
     pub address: String,
     pub tokens: Vec<TokenHolding>,
 }
+
+#[derive(Clone, Serialize, ToSchema)]
+pub struct NftHolding {
+    pub mint: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub collection: Option<String>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct NftsResponse {
+    pub address: String,
+    pub nfts: Vec<NftHolding>,
+}

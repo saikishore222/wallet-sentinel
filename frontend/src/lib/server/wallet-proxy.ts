@@ -2,7 +2,10 @@ import { isValidSolanaAddress } from "@/lib/solana";
 
 const WINDOW_MS = 60_000;
 const MAX_REQUESTS = 20;
-const AXUM_TIMEOUT_MS = 55_000;
+const AXUM_TIMEOUT_MS = 27_000;
+const MAX_ATTEMPTS = 2;
+const RETRY_DELAY_MS = 500;
+const RETRYABLE_STATUSES = new Set([502, 503, 504]);
 
 const hits = new Map<string, number[]>();
 
@@ -51,9 +54,13 @@ function mapUpstreamStatus(status: number): { status: number; error: string } {
   return { status: 502, error: "upstream unavailable" };
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function proxyToAxum(
   address: string,
-  resource: "summary" | "tokens" | "risks",
+  resource: "summary" | "tokens" | "nfts" | "risks",
 ): Promise<Response> {
   const backendUrl = process.env.BACKEND_URL?.replace(/\/$/, "");
   const apiKey = process.env.API_KEY;
@@ -65,31 +72,47 @@ async function proxyToAxum(
 
   const url = `${backendUrl}/wallet/${encodeURIComponent(address)}/${resource}`;
 
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method: "GET",
-      headers: { "x-api-key": apiKey },
-      cache: "no-store",
-      signal: AbortSignal.timeout(AXUM_TIMEOUT_MS),
-    });
-  } catch {
-    return jsonError(502, "upstream unavailable");
+  // Render's free-tier instances spin down when idle and take a while to
+  // wake back up, so the first request after a lull can time out or get a
+  // 502/503/504 even though the backend is healthy moments later. Retrying
+  // once smooths that over instead of surfacing a transient blip to the user.
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "GET",
+        headers: { "x-api-key": apiKey },
+        cache: "no-store",
+        signal: AbortSignal.timeout(AXUM_TIMEOUT_MS),
+      });
+    } catch {
+      if (attempt < MAX_ATTEMPTS) {
+        await sleep(RETRY_DELAY_MS);
+        continue;
+      }
+      return jsonError(502, "upstream unavailable");
+    }
+
+    if (!response.ok) {
+      if (RETRYABLE_STATUSES.has(response.status) && attempt < MAX_ATTEMPTS) {
+        await sleep(RETRY_DELAY_MS);
+        continue;
+      }
+      const mapped = mapUpstreamStatus(response.status);
+      return jsonError(mapped.status, mapped.error);
+    }
+
+    const body: unknown = await response.json();
+    return Response.json(body);
   }
 
-  if (!response.ok) {
-    const mapped = mapUpstreamStatus(response.status);
-    return jsonError(mapped.status, mapped.error);
-  }
-
-  const body: unknown = await response.json();
-  return Response.json(body);
+  return jsonError(502, "upstream unavailable");
 }
 
 export async function proxyWalletGet(
   request: Request,
   context: RouteContext,
-  resource: "summary" | "tokens" | "risks",
+  resource: "summary" | "tokens" | "nfts" | "risks",
 ): Promise<Response> {
   if (!allowRequest(clientIp(request))) {
     return jsonError(429, "rate limited");

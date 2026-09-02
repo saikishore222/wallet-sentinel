@@ -15,6 +15,18 @@ export interface TokensResponse {
   tokens: TokenHolding[];
 }
 
+export interface NftHolding {
+  mint: string;
+  name: string;
+  image?: string;
+  collection?: string;
+}
+
+export interface NftsResponse {
+  address: string;
+  nfts: NftHolding[];
+}
+
 export type RiskSeverity = "low" | "medium" | "high";
 
 export interface RiskFlag {

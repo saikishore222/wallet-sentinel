@@ -1,8 +1,8 @@
 use utoipa::OpenApi;
 
 use crate::models::{
-    ErrorBody, HealthResponse, RiskFlag, RiskSeverity, RisksResponse, TokenHolding, TokensResponse,
-    WalletSummary,
+    ErrorBody, HealthResponse, NftHolding, NftsResponse, RiskFlag, RiskSeverity, RisksResponse,
+    TokenHolding, TokensResponse, WalletSummary,
 };
 use crate::routes;
 
@@ -17,6 +17,7 @@ use crate::routes;
         routes::health::health,
         routes::wallet::wallet_summary,
         routes::wallet::wallet_tokens,
+        routes::wallet::wallet_nfts,
         routes::wallet::wallet_risks,
     ),
     components(schemas(
@@ -24,6 +25,8 @@ use crate::routes;
         WalletSummary,
         TokenHolding,
         TokensResponse,
+        NftHolding,
+        NftsResponse,
         RiskSeverity,
         RiskFlag,
         RisksResponse,

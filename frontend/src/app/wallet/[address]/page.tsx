@@ -2,13 +2,18 @@
 
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ImageOff, Info, OctagonAlert } from "lucide-react";
 
 import { CopyButton } from "@/components/copy-button";
 import { RiskGauge } from "@/components/risk-gauge";
 import { TokenAvatar } from "@/components/token-avatar";
 import { WalletToolbar } from "@/components/wallet-toolbar";
-import { getWalletRisks, getWalletSummary, getWalletTokens } from "@/lib/api";
+import {
+  getWalletNfts,
+  getWalletRisks,
+  getWalletSummary,
+  getWalletTokens,
+} from "@/lib/api";
 import {
   flagTitle,
   formatAmount,
@@ -19,6 +24,8 @@ import {
   truncateAddress,
 } from "@/lib/format";
 import type {
+  NftHolding,
+  NftsResponse,
   RiskFlag,
   RiskSeverity,
   RisksResponse,
@@ -46,20 +53,96 @@ type LoadState<T> = {
 type TokenFilter = "all" | "verified" | "unverified";
 
 const TOKEN_PAGE_SIZE = 50;
+const NFT_PAGE_SIZE = 24;
 const FLAG_PAGE_SIZE = 20;
 const SEVERITY_RANK: Record<RiskSeverity, number> = { high: 0, medium: 1, low: 2 };
 
 const ANIMATE_IN = "animate-in fade-in slide-in-from-bottom-2 duration-300";
 
-function severityClass(severity: RiskSeverity): string {
-  switch (severity) {
-    case "low":
-      return "bg-muted text-muted-foreground";
-    case "medium":
-      return "bg-yellow-300/15 text-yellow-300";
-    case "high":
-      return "bg-red-400/15 text-red-400";
+const SEVERITY_ORDER: RiskSeverity[] = ["high", "medium", "low"];
+
+const SEVERITY_ICON_CLASS: Record<RiskSeverity, string> = {
+  low: "text-muted-foreground",
+  medium: "text-yellow-300",
+  high: "text-red-400",
+};
+
+const SEVERITY_BAR_CLASS: Record<RiskSeverity, string> = {
+  low: "bg-muted-foreground/50",
+  medium: "bg-yellow-300",
+  high: "bg-red-400",
+};
+
+const SEVERITY_LABEL: Record<RiskSeverity, string> = {
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+};
+
+const SEVERITY_GROUP_BOX: Record<RiskSeverity, string> = {
+  high: "rounded-lg border border-red-400/25 bg-red-400/[0.06] p-3",
+  medium: "",
+  low: "",
+};
+
+function SeverityIcon({ severity }: { severity: RiskSeverity }) {
+  const className = `size-4 shrink-0 ${SEVERITY_ICON_CLASS[severity]}`;
+  if (severity === "high") {
+    return <OctagonAlert className={className} />;
   }
+  if (severity === "medium") {
+    return <AlertTriangle className={className} />;
+  }
+  return <Info className={className} />;
+}
+
+function severityCounts(flags: RiskFlag[]): Record<RiskSeverity, number> {
+  const counts: Record<RiskSeverity, number> = { high: 0, medium: 0, low: 0 };
+  for (const flag of flags) {
+    counts[flag.severity]++;
+  }
+  return counts;
+}
+
+function groupBySeverity(flags: RiskFlag[]): Partial<Record<RiskSeverity, RiskFlag[]>> {
+  const groups: Partial<Record<RiskSeverity, RiskFlag[]>> = {};
+  for (const flag of flags) {
+    (groups[flag.severity] ??= []).push(flag);
+  }
+  return groups;
+}
+
+function FlagSeverityOverview({ flags }: { flags: RiskFlag[] }) {
+  const counts = severityCounts(flags);
+  const total = flags.length || 1;
+  const present = SEVERITY_ORDER.filter((severity) => counts[severity] > 0);
+
+  return (
+    <div className="flex flex-col gap-2 pt-3">
+      <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        {present.map((severity) => (
+          <div
+            key={severity}
+            className={SEVERITY_BAR_CLASS[severity]}
+            style={{ width: `${(counts[severity] / total) * 100}%` }}
+          />
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        {present.map((severity) => (
+          <span
+            key={severity}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground"
+          >
+            <span
+              className={`size-1.5 rounded-full ${SEVERITY_BAR_CLASS[severity]}`}
+            />
+            {counts[severity]} {SEVERITY_LABEL[severity].toLowerCase()}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function ErrorCard({
@@ -153,9 +236,116 @@ function TokenList({ tokens }: { tokens: TokenHolding[] }) {
   );
 }
 
+function NftThumbnail({ nft }: { nft: NftHolding }) {
+  const [failed, setFailed] = useState(false);
+  const showImage = Boolean(nft.image) && !failed;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="aspect-square overflow-hidden rounded-lg bg-muted">
+        {showImage ? (
+          // eslint-disable-next-line @next/next/no-img-element -- NFT images come from arbitrary storage hosts, not an allowlisted set next/image can optimize
+          <img
+            src={nft.image}
+            alt={nft.name}
+            loading="lazy"
+            className="size-full object-cover"
+            onError={() => setFailed(true)}
+          />
+        ) : (
+          <div className="flex size-full items-center justify-center">
+            <ImageOff className="size-6 text-muted-foreground/40" />
+          </div>
+        )}
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-xs font-medium" title={nft.name}>
+          {nft.name}
+        </p>
+        <div className="flex items-center gap-1">
+          <span
+            className="truncate font-mono text-[11px] text-muted-foreground"
+            title={nft.mint}
+          >
+            {truncateAddress(nft.mint)}
+          </span>
+          <CopyButton value={nft.mint} label="Copy mint" iconOnly />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NftGrid({ nfts }: { nfts: NftHolding[] }) {
+  const [visibleCount, setVisibleCount] = useState(NFT_PAGE_SIZE);
+  const shown = nfts.slice(0, visibleCount);
+  const remaining = nfts.length - shown.length;
+
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {shown.map((nft, index) => (
+          <NftThumbnail key={`${nft.mint}-${index}`} nft={nft} />
+        ))}
+      </div>
+      {remaining > 0 && (
+        <div className="flex justify-center pt-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setVisibleCount((count) => count + NFT_PAGE_SIZE)}
+          >
+            Show {Math.min(remaining, NFT_PAGE_SIZE)} more ({remaining} left)
+          </Button>
+        </div>
+      )}
+    </>
+  );
+}
+
 function sortFlags(flags: RiskFlag[]): RiskFlag[] {
   return [...flags].sort(
     (a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity],
+  );
+}
+
+function FlagGroup({
+  severity,
+  flags,
+}: {
+  severity: RiskSeverity;
+  flags: RiskFlag[];
+}) {
+  return (
+    <div className={SEVERITY_GROUP_BOX[severity]}>
+      <div className="flex items-center gap-1.5 pb-1.5">
+        <SeverityIcon severity={severity} />
+        <span
+          className={`text-xs font-semibold tracking-wide uppercase ${SEVERITY_ICON_CLASS[severity]}`}
+        >
+          {SEVERITY_LABEL[severity]}
+        </span>
+        <span className="text-xs text-muted-foreground">
+          · {flags.length}
+        </span>
+      </div>
+      <ul className="flex flex-col divide-y divide-border/60">
+        {flags.map((flag, index) => (
+          <li
+            key={`${flag.flag_type}-${index}`}
+            className="flex flex-col gap-0.5 py-2 first:pt-0 last:pb-0"
+          >
+            <span className="text-sm font-medium">
+              {flagTitle(flag.flag_type)}
+            </span>
+            <p className="text-sm tabular-nums text-muted-foreground">
+              {formatRiskMessage(flag.message)}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -164,26 +354,21 @@ function FlagList({ flags }: { flags: RiskFlag[] }) {
   const [visibleCount, setVisibleCount] = useState(FLAG_PAGE_SIZE);
   const shown = sorted.slice(0, visibleCount);
   const remaining = sorted.length - shown.length;
+  const grouped = useMemo(() => groupBySeverity(shown), [shown]);
 
   return (
     <>
-      <ul className="flex flex-col gap-3">
-        {shown.map((flag, index) => (
-          <li key={`${flag.flag_type}-${index}`} className="flex flex-col gap-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge className={severityClass(flag.severity)}>
-                {flag.severity}
-              </Badge>
-              <span className="text-sm font-medium">
-                {flagTitle(flag.flag_type)}
-              </span>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {formatRiskMessage(flag.message)}
-            </p>
-          </li>
-        ))}
-      </ul>
+      <div className="flex flex-col gap-4">
+        {SEVERITY_ORDER.filter((severity) => grouped[severity]?.length).map(
+          (severity) => (
+            <FlagGroup
+              key={severity}
+              severity={severity}
+              flags={grouped[severity]!}
+            />
+          ),
+        )}
+      </div>
       {remaining > 0 && (
         <div className="flex justify-center pt-3">
           <Button
@@ -210,6 +395,11 @@ export default function WalletPage() {
     loading: true,
   });
   const [tokens, setTokens] = useState<LoadState<TokensResponse>>({
+    data: null,
+    error: null,
+    loading: true,
+  });
+  const [nfts, setNfts] = useState<LoadState<NftsResponse>>({
     data: null,
     error: null,
     loading: true,
@@ -245,6 +435,7 @@ export default function WalletPage() {
   useEffect(() => {
     void loadSection(getWalletSummary, setSummary);
     void loadSection(getWalletTokens, setTokens);
+    void loadSection(getWalletNfts, setNfts);
     void loadSection(getWalletRisks, setRisks);
   }, [loadSection, retryKey]);
 
@@ -363,6 +554,7 @@ export default function WalletPage() {
               {risks.data.flags.length} flag
               {risks.data.flags.length === 1 ? "" : "s"} worth a closer look
             </CardDescription>
+            <FlagSeverityOverview flags={risks.data.flags} />
           </CardHeader>
           <CardContent>
             <FlagList
@@ -442,6 +634,43 @@ export default function WalletPage() {
                 tokens={visibleTokens}
               />
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {nfts.loading && (
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-3.5 w-32" />
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <Skeleton key={index} className="aspect-square w-full rounded-lg" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      {nfts.error && (
+        <ErrorCard
+          title="NFTs"
+          message={nfts.error}
+          onRetry={() => void loadSection(getWalletNfts, setNfts)}
+        />
+      )}
+      {nfts.data && nfts.data.nfts.length > 0 && (
+        <Card className={ANIMATE_IN}>
+          <CardHeader>
+            <CardTitle>NFTs</CardTitle>
+            <CardDescription>
+              {nfts.data.nfts.length} holding
+              {nfts.data.nfts.length === 1 ? "" : "s"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <NftGrid key={`${address}-${retryKey}`} nfts={nfts.data.nfts} />
           </CardContent>
         </Card>
       )}

@@ -6,7 +6,10 @@ use axum::{
 
 use crate::AppState;
 use crate::error::AppError;
-use crate::models::{ErrorBody, RisksResponse, TokenHolding, TokensResponse, WalletSummary};
+use crate::models::{
+    ErrorBody, NftHolding, NftsResponse, RisksResponse, TokenHolding, TokensResponse,
+    WalletSummary,
+};
 use crate::services::token_list::VerifiedTokenIndex;
 use crate::services::{analyzer, helius, token_list};
 use crate::validation::is_valid_solana_address;
@@ -17,6 +20,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/wallet/{address}/summary", get(wallet_summary))
         .route("/wallet/{address}/tokens", get(wallet_tokens))
+        .route("/wallet/{address}/nfts", get(wallet_nfts))
         .route("/wallet/{address}/risks", get(wallet_risks))
 }
 
@@ -81,6 +85,30 @@ pub async fn wallet_tokens(
     require_address(&address)?;
     let tokens = fetch_token_holdings(&state, &address).await?;
     Ok(Json(TokensResponse { address, tokens }))
+}
+
+#[utoipa::path(
+    get,
+    path = "/wallet/{address}/nfts",
+    tag = "wallet",
+    params(
+        ("address" = String, Path, description = "Solana wallet address")
+    ),
+    responses(
+        (status = 200, description = "NFT holdings", body = NftsResponse),
+        (status = 400, description = "Invalid address", body = ErrorBody),
+        (status = 401, description = "Missing or invalid API key", body = ErrorBody),
+        (status = 429, description = "Rate limited", body = ErrorBody),
+        (status = 502, description = "Upstream unavailable", body = ErrorBody)
+    )
+)]
+pub async fn wallet_nfts(
+    State(state): State<AppState>,
+    Path(address): Path<String>,
+) -> Result<Json<NftsResponse>, AppError> {
+    require_address(&address)?;
+    let nfts = fetch_nft_holdings(&state, &address).await?;
+    Ok(Json(NftsResponse { address, nfts }))
 }
 
 #[utoipa::path(
@@ -161,6 +189,34 @@ async fn fetch_token_holdings(
         .await;
 
     Ok(tokens)
+}
+
+async fn fetch_nft_holdings(state: &AppState, address: &str) -> Result<Vec<NftHolding>, AppError> {
+    if let Some(nfts) = state.nft_holdings_cache.get(address).await {
+        tracing::info!(%address, "nft holdings cache hit");
+        return Ok(nfts);
+    }
+
+    tracing::info!(%address, "nft holdings cache miss");
+
+    let raw = helius::get_nft_assets(&state.http_client, &state.helius_api_key, address).await?;
+
+    let nfts: Vec<NftHolding> = raw
+        .into_iter()
+        .map(|asset| NftHolding {
+            mint: asset.mint,
+            name: asset.name,
+            image: asset.image,
+            collection: asset.collection,
+        })
+        .collect();
+
+    state
+        .nft_holdings_cache
+        .insert(address.to_string(), nfts.clone())
+        .await;
+
+    Ok(nfts)
 }
 
 async fn get_verified_tokens_cached(state: &AppState) -> Result<VerifiedTokenIndex, AppError> {

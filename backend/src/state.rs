@@ -5,12 +5,13 @@ use std::time::Duration;
 use moka::future::Cache;
 use reqwest::Client;
 
-use crate::models::TokenHolding;
+use crate::models::{NftHolding, TokenHolding};
 use crate::rate_limit::RateLimiter;
 use crate::services::token_list::VerifiedTokenIndex;
 
 const TOKEN_ACCOUNTS_TTL: Duration = Duration::from_secs(60);
 const VERIFIED_MINTS_TTL: Duration = Duration::from_secs(5 * 60);
+const NFT_HOLDINGS_TTL: Duration = Duration::from_secs(120);
 
 #[derive(Clone)]
 pub struct AppState {
@@ -24,6 +25,7 @@ pub struct AppStateInner {
     pub http_client: Client,
     pub token_accounts_cache: Cache<String, Vec<TokenHolding>>,
     pub verified_tokens_cache: Cache<String, VerifiedTokenIndex>,
+    pub nft_holdings_cache: Cache<String, Vec<NftHolding>>,
     pub rate_limiter: RateLimiter,
 }
 
@@ -38,6 +40,8 @@ impl AppState {
 
         let verified_tokens_cache = Cache::builder().time_to_live(VERIFIED_MINTS_TTL).build();
 
+        let nft_holdings_cache = Cache::builder().time_to_live(NFT_HOLDINGS_TTL).build();
+
         Self {
             inner: Arc::new(AppStateInner {
                 api_key,
@@ -46,6 +50,7 @@ impl AppState {
                 http_client,
                 token_accounts_cache,
                 verified_tokens_cache,
+                nft_holdings_cache,
                 rate_limiter: RateLimiter::new(),
             }),
         }

@@ -1,4 +1,5 @@
 import type {
+  NftsResponse,
   RisksResponse,
   TokensResponse,
   WalletSummary,
@@ -47,6 +48,12 @@ export function getWalletSummary(address: string): Promise<WalletSummary> {
 export function getWalletTokens(address: string): Promise<TokensResponse> {
   return fetchJson<TokensResponse>(
     `/api/wallet/${encodeURIComponent(address)}/tokens`,
+  );
+}
+
+export function getWalletNfts(address: string): Promise<NftsResponse> {
+  return fetchJson<NftsResponse>(
+    `/api/wallet/${encodeURIComponent(address)}/nfts`,
   );
 }
 
