@@ -1,20 +1,25 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle } from "lucide-react";
 
 import { CopyButton } from "@/components/copy-button";
+import { RiskGauge } from "@/components/risk-gauge";
+import { TokenAvatar } from "@/components/token-avatar";
+import { WalletToolbar } from "@/components/wallet-toolbar";
 import { getWalletRisks, getWalletSummary, getWalletTokens } from "@/lib/api";
 import {
   flagTitle,
   formatAmount,
   formatRiskMessage,
   formatSol,
+  humanizeError,
   riskBand,
   truncateAddress,
 } from "@/lib/format";
 import type {
+  RiskFlag,
   RiskSeverity,
   RisksResponse,
   TokenHolding,
@@ -41,16 +46,47 @@ type LoadState<T> = {
 type TokenFilter = "all" | "verified" | "unverified";
 
 const TOKEN_PAGE_SIZE = 50;
+const FLAG_PAGE_SIZE = 20;
+const SEVERITY_RANK: Record<RiskSeverity, number> = { high: 0, medium: 1, low: 2 };
+
+const ANIMATE_IN = "animate-in fade-in slide-in-from-bottom-2 duration-300";
 
 function severityClass(severity: RiskSeverity): string {
   switch (severity) {
     case "low":
-      return "bg-zinc-200 text-zinc-800";
+      return "bg-muted text-muted-foreground";
     case "medium":
-      return "bg-yellow-200 text-yellow-900";
+      return "bg-yellow-300/15 text-yellow-300";
     case "high":
-      return "bg-red-200 text-red-900";
+      return "bg-red-400/15 text-red-400";
   }
+}
+
+function ErrorCard({
+  title,
+  message,
+  onRetry,
+}: {
+  title: string;
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <Card className={ANIMATE_IN}>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <AlertTriangle className="size-4 text-destructive" />
+          {title}
+        </CardTitle>
+        <CardDescription>{humanizeError(message)}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button type="button" size="sm" variant="outline" onClick={onRetry}>
+          Try again
+        </Button>
+      </CardContent>
+    </Card>
+  );
 }
 
 function sortTokens(tokens: TokenHolding[]): TokenHolding[] {
@@ -75,22 +111,25 @@ function TokenList({ tokens }: { tokens: TokenHolding[] }) {
             key={`${token.mint}-${index}`}
             className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0"
           >
-            <div className="min-w-0">
-              <p className="text-sm font-medium">
-                {token.symbol ?? "Unknown token"}
-              </p>
-              <div className="mt-0.5 flex items-center gap-1.5">
-                <span
-                  className="font-mono text-xs text-muted-foreground"
-                  title={token.mint}
-                >
-                  {truncateAddress(token.mint)}
-                </span>
-                <CopyButton value={token.mint} label="Copy mint" iconOnly />
+            <div className="flex min-w-0 items-start gap-3">
+              <TokenAvatar mint={token.mint} symbol={token.symbol} />
+              <div className="min-w-0">
+                <p className="text-sm font-medium">
+                  {token.symbol ?? "Unknown token"}
+                </p>
+                <div className="mt-0.5 flex items-center gap-1.5">
+                  <span
+                    className="font-mono text-xs text-muted-foreground"
+                    title={token.mint}
+                  >
+                    {truncateAddress(token.mint)}
+                  </span>
+                  <CopyButton value={token.mint} label="Copy mint" iconOnly />
+                </div>
+                <p className="tabular-nums text-sm text-muted-foreground">
+                  Amount {formatAmount(token.amount)}
+                </p>
               </div>
-              <p className="tabular-nums text-sm text-muted-foreground">
-                Amount {formatAmount(token.amount)}
-              </p>
             </div>
             <Badge variant={token.verified ? "default" : "outline"}>
               {token.verified ? "verified" : "unverified"}
@@ -107,6 +146,53 @@ function TokenList({ tokens }: { tokens: TokenHolding[] }) {
             onClick={() => setVisibleCount((count) => count + TOKEN_PAGE_SIZE)}
           >
             Show {Math.min(remaining, TOKEN_PAGE_SIZE)} more ({remaining} left)
+          </Button>
+        </div>
+      )}
+    </>
+  );
+}
+
+function sortFlags(flags: RiskFlag[]): RiskFlag[] {
+  return [...flags].sort(
+    (a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity],
+  );
+}
+
+function FlagList({ flags }: { flags: RiskFlag[] }) {
+  const sorted = useMemo(() => sortFlags(flags), [flags]);
+  const [visibleCount, setVisibleCount] = useState(FLAG_PAGE_SIZE);
+  const shown = sorted.slice(0, visibleCount);
+  const remaining = sorted.length - shown.length;
+
+  return (
+    <>
+      <ul className="flex flex-col gap-3">
+        {shown.map((flag, index) => (
+          <li key={`${flag.flag_type}-${index}`} className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge className={severityClass(flag.severity)}>
+                {flag.severity}
+              </Badge>
+              <span className="text-sm font-medium">
+                {flagTitle(flag.flag_type)}
+              </span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {formatRiskMessage(flag.message)}
+            </p>
+          </li>
+        ))}
+      </ul>
+      {remaining > 0 && (
+        <div className="flex justify-center pt-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setVisibleCount((count) => count + FLAG_PAGE_SIZE)}
+          >
+            Show {Math.min(remaining, FLAG_PAGE_SIZE)} more ({remaining} left)
           </Button>
         </div>
       )}
@@ -180,59 +266,141 @@ export default function WalletPage() {
   const band = risks.data ? riskBand(risks.data.risk_score) : null;
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 p-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-xl font-semibold">Wallet analysis</h1>
-        <div className="flex gap-2">
-          <Button type="button" variant="outline" onClick={() => setRetryKey((n) => n + 1)}>
-            Retry
-          </Button>
-          <Button variant="outline" nativeButton={false} render={<Link href="/" />}>
-            New search
-          </Button>
-        </div>
+    <>
+      <WalletToolbar
+        address={address}
+        risk={risks.data && band ? { score: risks.data.risk_score, band } : null}
+        riskLoading={risks.loading}
+        onRefresh={() => setRetryKey((n) => n + 1)}
+      />
+      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 p-6">
+      <div className="grid gap-4 sm:grid-cols-2">
+        {summary.loading && (
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-3.5 w-40" />
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2">
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-7 w-32" />
+            </CardContent>
+          </Card>
+        )}
+        {summary.error && (
+          <ErrorCard
+            title="Summary"
+            message={summary.error}
+            onRetry={() => void loadSection(getWalletSummary, setSummary)}
+          />
+        )}
+        {summary.data && (
+          <Card className={ANIMATE_IN}>
+            <CardHeader>
+              <CardTitle>Summary</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">SOL balance</p>
+              <p className="text-2xl font-semibold tabular-nums">
+                {formatSol(summary.data.sol_balance)} SOL
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {risks.loading && (
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-3.5 w-32" />
+            </CardHeader>
+            <CardContent className="flex items-center gap-4">
+              <Skeleton className="size-[88px] shrink-0 rounded-full" />
+              <div className="flex flex-1 flex-col gap-2">
+                <Skeleton className="h-5 w-20 rounded-full" />
+                <Skeleton className="h-3 w-full" />
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        {risks.error && (
+          <ErrorCard
+            title="Risk score"
+            message={risks.error}
+            onRetry={() => void loadSection(getWalletRisks, setRisks)}
+          />
+        )}
+        {risks.data && band && (
+          <Card className={ANIMATE_IN}>
+            <CardHeader>
+              <CardTitle>Risk score</CardTitle>
+              <CardDescription>Heuristic · higher means more risk</CardDescription>
+            </CardHeader>
+            <CardContent className="flex items-center gap-4">
+              <RiskGauge
+                score={risks.data.risk_score}
+                textClass={band.textClass}
+                strokeColor={band.strokeColor}
+              />
+              <div>
+                <Badge className={band.badgeClass}>{band.label} risk</Badge>
+                <p className="mt-1.5 text-sm text-muted-foreground">
+                  {risks.data.flags.length === 0
+                    ? "No suspicious signals found."
+                    : `${risks.data.flags.length} signal${risks.data.flags.length === 1 ? "" : "s"} found.`}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
-      {summary.loading && <Skeleton className="h-28 w-full" />}
-      {summary.error && (
-        <Card>
+      {risks.data && risks.data.flags.length > 0 && (
+        <Card className={ANIMATE_IN}>
           <CardHeader>
-            <CardTitle>Summary</CardTitle>
-            <CardDescription>{summary.error}</CardDescription>
-          </CardHeader>
-        </Card>
-      )}
-      {summary.data && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Summary</CardTitle>
-            <CardDescription className="flex items-center justify-between gap-2">
-              <span className="font-mono" title={summary.data.address}>
-                {truncateAddress(summary.data.address, 6, 6)}
-              </span>
-              <CopyButton value={summary.data.address} label="Copy address" />
+            <CardTitle>Risk flags</CardTitle>
+            <CardDescription>
+              {risks.data.flags.length} flag
+              {risks.data.flags.length === 1 ? "" : "s"} worth a closer look
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">SOL balance</p>
-            <p className="text-2xl font-semibold tabular-nums">
-              {formatSol(summary.data.sol_balance)} SOL
-            </p>
+            <FlagList
+              key={`${address}-${retryKey}`}
+              flags={risks.data.flags}
+            />
           </CardContent>
         </Card>
       )}
 
-      {tokens.loading && <Skeleton className="h-40 w-full" />}
-      {tokens.error && (
+      {tokens.loading && (
         <Card>
           <CardHeader>
-            <CardTitle>Tokens</CardTitle>
-            <CardDescription>{tokens.error}</CardDescription>
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-3.5 w-48" />
           </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="flex items-center gap-3">
+                <Skeleton className="size-8 shrink-0 rounded-full" />
+                <div className="flex flex-1 flex-col gap-1.5">
+                  <Skeleton className="h-3.5 w-24" />
+                  <Skeleton className="h-3 w-32" />
+                </div>
+              </div>
+            ))}
+          </CardContent>
         </Card>
       )}
+      {tokens.error && (
+        <ErrorCard
+          title="Tokens"
+          message={tokens.error}
+          onRetry={() => void loadSection(getWalletTokens, setTokens)}
+        />
+      )}
       {tokens.data && (
-        <Card>
+        <Card className={ANIMATE_IN}>
           <CardHeader>
             <CardTitle>Tokens</CardTitle>
             <CardDescription>
@@ -277,61 +445,7 @@ export default function WalletPage() {
           </CardContent>
         </Card>
       )}
-
-      {risks.loading && <Skeleton className="h-40 w-full" />}
-      {risks.error && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Risk flags</CardTitle>
-            <CardDescription>{risks.error}</CardDescription>
-          </CardHeader>
-        </Card>
-      )}
-      {risks.data && band && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Risk flags</CardTitle>
-            <CardDescription>
-              Heuristic score · higher means more risk · {risks.data.flags.length}{" "}
-              flag{risks.data.flags.length === 1 ? "" : "s"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className={`text-3xl font-semibold tabular-nums ${band.className}`}>
-              {risks.data.risk_score}
-              <span className="text-base font-medium text-muted-foreground">
-                {" "}
-                / 100
-              </span>
-            </p>
-            <p className="mb-4 text-sm text-muted-foreground">{band.label} risk</p>
-            {risks.data.flags.length === 0 ? (
-              <p className="text-muted-foreground">No risk flags.</p>
-            ) : (
-              <ul className="flex flex-col gap-3">
-                {risks.data.flags.map((flag, index) => (
-                  <li
-                    key={`${flag.flag_type}-${index}`}
-                    className="flex flex-col gap-1"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge className={severityClass(flag.severity)}>
-                        {flag.severity}
-                      </Badge>
-                      <span className="text-sm font-medium">
-                        {flagTitle(flag.flag_type)}
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {formatRiskMessage(flag.message)}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-      )}
-    </main>
+      </main>
+    </>
   );
 }

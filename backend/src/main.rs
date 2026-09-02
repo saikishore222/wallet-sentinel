@@ -24,7 +24,7 @@ async fn main() {
     };
 
     let http_client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(45))
         .connect_timeout(Duration::from_secs(5))
         .build()
         .expect("failed to build HTTP client");

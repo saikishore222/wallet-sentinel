@@ -14,10 +14,7 @@ pub async fn send_with_retry(builder: RequestBuilder, attempts: u32) -> Result<R
         match request.send().await {
             Ok(response) => {
                 let status = response.status();
-                if status.as_u16() == 429 {
-                    return Ok(response);
-                }
-                if status.is_server_error() {
+                if status.is_server_error() || status.as_u16() == 429 {
                     last_error = Some(anyhow::anyhow!("upstream HTTP {status}"));
                     if attempt + 1 < attempts {
                         tokio::time::sleep(backoff(attempt)).await;
